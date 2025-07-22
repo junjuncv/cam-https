@@ -1,0 +1,172 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FLV视频播放器</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            height: 100vh;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .video-container {
+            width: 100%;
+            max-width: 800px;
+            background-color: #000;
+            position: relative;
+            margin-bottom: 20px;
+        }
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .status {
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .error {
+            color: #ff4d4f;
+        }
+    </style>
+    <!-- 引入flv.js库 -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/flv.js/1.6.2/flv.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h2>FLV视频播放器</h2>
+        <div class="video-container">
+            <video id="videoElement" controls></video>
+        </div>
+        <div id="status" class="status">准备就绪，等待播放...</div>
+    </div>
+
+    <script>
+        // 获取URL参数
+        function getQueryParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        // 初始化播放器
+        function initPlayer() {
+            // 获取视频URL参数
+            const videoUrl = getQueryParam('url');
+            const statusElement = document.getElementById('status');
+            
+            if (!videoUrl) {
+                statusElement.textContent = '错误：未提供视频URL';
+                statusElement.classList.add('error');
+                return;
+            }
+
+            // 检查浏览器是否支持flv.js
+            if (flvjs.isSupported()) {
+                const videoElement = document.getElementById('videoElement');
+                const flvPlayer = flvjs.createPlayer({
+                    type: 'flv',
+                    url: decodeURIComponent(videoUrl),
+                    isLive: true,
+                    hasAudio: true,
+                    hasVideo: true
+                });
+                
+                flvPlayer.attachMediaElement(videoElement);
+                flvPlayer.load();
+
+                // 自动播放
+                videoElement.play().catch(e => {
+                    console.error('自动播放失败:', e);
+                    statusElement.textContent = '自动播放失败，请点击播放按钮';
+                    statusElement.classList.add('error');
+                });
+
+                // 监听播放事件
+                videoElement.addEventListener('playing', () => {
+                    statusElement.textContent = '正在播放...';
+                    statusElement.classList.remove('error');
+                });
+
+                // 监听错误事件
+                videoElement.addEventListener('error', () => {
+                    statusElement.textContent = '播放出错，请检查视频地址是否正确';
+                    statusElement.classList.add('error');
+                });
+
+                flvPlayer.on(flvjs.Events.ERROR, (errorType, errorDetail) => {
+                    console.error('FLV播放器错误:', errorType, errorDetail);
+                    statusElement.textContent = `播放错误: ${errorType}`;
+                    statusElement.classList.add('error');
+                });
+
+                // 向小程序发送消息
+                function sendMessageToMiniProgram(message) {
+                    if (window.wx && window.wx.miniProgram) {
+                        window.wx.miniProgram.postMessage({
+                            data: message
+                        });
+                    }
+                }
+
+                // 发送播放状态
+                videoElement.addEventListener('play', () => {
+                    sendMessageToMiniProgram({ type: 'play' });
+                });
+
+                videoElement.addEventListener('pause', () => {
+                    sendMessageToMiniProgram({ type: 'pause' });
+                });
+
+                videoElement.addEventListener('ended', () => {
+                    sendMessageToMiniProgram({ type: 'ended' });
+                });
+
+                // 页面卸载时释放资源
+                window.addEventListener('beforeunload', () => {
+                    flvPlayer.pause();
+                    flvPlayer.unload();
+                    flvPlayer.detachMediaElement();
+                    flvPlayer.destroy();
+                });
+            } else {
+                statusElement.textContent = '您的浏览器不支持FLV播放';
+                statusElement.classList.add('error');
+            }
+        }
+
+        // 页面加载完成后初始化播放器
+        document.addEventListener('DOMContentLoaded', initPlayer);
+
+        // 监听来自小程序的消息
+        window.addEventListener('message', (e) => {
+            const data = e.data;
+            const videoElement = document.getElementById('videoElement');
+            
+            if (data.type === 'control') {
+                if (data.action === 'play') {
+                    videoElement.play();
+                } else if (data.action === 'pause') {
+                    videoElement.pause();
+                } else if (data.action === 'stop') {
+                    videoElement.pause();
+                    videoElement.currentTime = 0;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
